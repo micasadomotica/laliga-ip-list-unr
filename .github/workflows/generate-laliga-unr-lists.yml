@@ -1,0 +1,54 @@
+name: Generate UNR LaLiga lists (IPv4/IPv6)
+
+on:
+  # Se ejecuta cuando cambie laliga_ip_list.txt en main
+  push:
+    branches: [ main ]
+    paths:
+      - "laliga_ip_list.txt"
+
+  # También puedes lanzarlo a mano desde la UI de Actions
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-unr-lists:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show current laliga_ip_list.txt
+        run: |
+          if [ ! -s "laliga_ip_list.txt" ]; then
+            echo "❌ laliga_ip_list.txt not found or empty"
+            exit 1
+          fi
+          echo "✅ laliga_ip_list.txt present, first lines:"
+          head -n 20 laliga_ip_list.txt || true
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate UNR IPv4/IPv6 lists
+        run: |
+          echo "🧩 Generating UNR lists from laliga_ip_list.txt..."
+          node scripts/generate-unr-lists.js
+
+      - name: Commit and push UNR lists
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add laliga_ip_list_unr_ipv4.txt laliga_ip_list_unr_ipv6.txt
+            git commit -m "Auto-update UNR LaLiga IPv4/IPv6 lists"
+            git push
+          else
+            echo "No UNR changes to commit."
+          fi
