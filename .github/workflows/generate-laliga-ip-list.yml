@@ -72,3 +72,41 @@ jobs:
           else
             echo "No changes to commit."
           fi
+
+      - name: Generate IP whitelist
+        run: |
+          echo "📝 Generating IP list from $JSON_FILE..."
+          jq -r '.data[].ip' "$JSON_FILE" | sort -u > "$OUTPUT_FILE"
+
+          if [ ! -s "$OUTPUT_FILE" ]; then
+            echo "❌ Generated IP list is empty. Aborting."
+            exit 1
+          fi
+
+          echo "✅ IP whitelist generated:"
+          cat "$OUTPUT_FILE"
+
+      - name: Generate UNR IPv4/IPv6 lists
+        run: |
+          echo "🧩 Generating UNR IPv4/IPv6 UNR lists from $OUTPUT_FILE..."
+          node scripts/generate-unr-lists.js
+
+      - name: Check Node.js version
+        run: node -v
+
+      - name: Analyze JSON and write status
+        run: node scripts/analyze.js
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+
+          if [[ `git status --porcelain` ]]; then
+            git add "$OUTPUT_FILE" "$OUTPUT_JSON_FILE" \
+                    laliga_ip_list_unr_ipv4.txt laliga_ip_list_unr_ipv6.txt
+            git commit -m "Auto-update LaLiga IP lists (whitelist, status, UNR IPv4/IPv6)"
+            git push
+          else
+            echo "No changes to commit."
+          fi
