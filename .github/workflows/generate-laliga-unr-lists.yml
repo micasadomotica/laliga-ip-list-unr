@@ -10,6 +10,11 @@ on:
   # También puedes lanzarlo a mano desde la UI de Actions
   workflow_dispatch:
 
+# Evita ejecuciones concurrentes que empujen a main a la vez
+concurrency:
+  group: laliga-main-writes
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -20,6 +25,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Show current laliga_ip_list.txt
         run: |
@@ -42,13 +49,40 @@ jobs:
 
       - name: Commit and push UNR lists
         run: |
+          set -e
+
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
           if [[ -n "$(git status --porcelain)" ]]; then
             git add laliga_ip_list_unr_ipv4.txt laliga_ip_list_unr_ipv6.txt
             git commit -m "Auto-update UNR LaLiga IPv4/IPv6 lists"
-            git push
+
+            # Reintentos por si el otro workflow empuja a main entre medias
+            for attempt in 1 2 3; do
+              echo "🔄 Sync attempt $attempt/3..."
+
+              git fetch origin main
+
+              # Rebase sobre el main remoto (evita non-fast-forward)
+              if ! git rebase origin/main; then
+                echo "⚠️ Rebase failed, aborting rebase..."
+                git rebase --abort || true
+                exit 1
+              fi
+
+              # Push seguro (no pisa cambios remotos inesperados)
+              if git push --force-with-lease origin HEAD:main; then
+                echo "✅ Pushed successfully."
+                exit 0
+              fi
+
+              echo "⚠️ Push failed (likely due to concurrent updates). Retrying..."
+              sleep 5
+            done
+
+            echo "❌ Failed to push after 3 attempts."
+            exit 1
           else
             echo "No UNR changes to commit."
           fi
